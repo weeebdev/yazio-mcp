@@ -4,7 +4,7 @@
   "version": "0.0.14",
   "description": "MCP server for accessing Yazio user & nutrition data (unofficial)",
   "author": {
-    "name": "fliptheweb"
+    "name": "weeebdev"
   },
   "server": {
     "type": "node",

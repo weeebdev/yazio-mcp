@@ -6,9 +6,9 @@
 
 An MCP (Model Context Protocol) server that connects Claude/Cursor to your Yazio nutrition data. Track your diet, search food products, and manage your nutrition goals directly from your AI assistant.
 
-**Available on NPM**: `npx yazio-mcp`
+**Available on NPM**: `npx @weeebdev/yazio-mcp`
 
-**Claude Desktop Extension**: [yazio-mcp.mcpb](https://github.com/fliptheweb/yazio-mcp/releases/latest/download/yazio-mcp.mcpb)
+**Claude Desktop Extension**: [yazio-mcp.mcpb](https://github.com/weeebdev/yazio-mcp/releases/latest/download/yazio-mcp.mcpb)
 
 ## ✨ Features
 
@@ -29,7 +29,7 @@ Add the following JSON your MCP client configuration:
   "mcpServers": {
     "yazio": {
       "command": "npx",
-      "args": ["-y", "yazio-mcp"],
+      "args": ["-y", "@weeebdev/yazio-mcp"],
       "env": {
         "YAZIO_USERNAME": "your_email@emai.com",
         "YAZIO_PASSWORD": "your_password"
@@ -42,7 +42,7 @@ Add the following JSON your MCP client configuration:
 
 ### Claude Desktop (Extension)
 
-Download and open [yazio-mcp.mcpb](https://github.com/fliptheweb/yazio-mcp/releases/latest/download/yazio-mcp.mcpb) with Claude Desktop. You'll be prompted to enter your Yazio credentials — your password is stored securely in the OS keychain.
+Download and open [yazio-mcp.mcpb](https://github.com/weeebdev/yazio-mcp/releases/latest/download/yazio-mcp.mcpb) with Claude Desktop. You'll be prompted to enter your Yazio credentials — your password is stored securely in the OS keychain.
 
 See [Building Desktop Extensions with MCPB](https://support.claude.com/en/articles/12922929-building-desktop-extensions-with-mcpb) for more details.
 
@@ -53,7 +53,7 @@ See [Building Desktop Extensions with MCPB](https://support.claude.com/en/articl
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add yazio -e YAZIO_USERNAME=your_email@email.com -e YAZIO_PASSWORD=your_password -- npx -y yazio-mcp
+claude mcp add yazio -e YAZIO_USERNAME=your_email@email.com -e YAZIO_PASSWORD=your_password -- npx -y @weeebdev/yazio-mcp
 ```
 
 Verify with `claude mcp list`.
@@ -106,7 +106,7 @@ Easily log meals you forgot to track in the Yazio app directly from Claude or Cu
 ## Test Connection
 
 ```bash
-YAZIO_USERNAME='your_email' YAZIO_PASSWORD='your_password' npx yazio-mcp
+YAZIO_USERNAME='your_email' YAZIO_PASSWORD='your_password' npx @weeebdev/yazio-mcp
 ```
 
 ## ⚠️ Important Disclaimers
@@ -127,7 +127,7 @@ YAZIO_USERNAME='your_email' YAZIO_PASSWORD='your_password' npx yazio-mcp
 3. Debugging:
 
 ```
-YAZIO_USERNAME=X YAZIO_PASSWORD=X npx -y @modelcontextprotocol/inspector npx <local-path>/yazio-mcp
+YAZIO_USERNAME=X YAZIO_PASSWORD=X npx -y @modelcontextprotocol/inspector npx <local-path>/@weeebdev/yazio-mcp
 ```
 ---
 

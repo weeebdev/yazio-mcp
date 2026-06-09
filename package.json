@@ -1,18 +1,21 @@
 {
-  "name": "yazio-mcp",
+  "name": "@weeebdev/yazio-mcp",
   "version": "0.0.14",
   "description": "MCP server for accessing Yazio user & nutrition data (unofficial)",
-  "mcpName": "io.github.fliptheweb/yazio-mcp",
-  "author": "fliptheweb",
+  "mcpName": "io.github.weeebdev/yazio-mcp",
+  "author": "weeebdev",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fliptheweb/yazio-mcp.git"
+    "url": "git+https://github.com/weeebdev/yazio-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/fliptheweb/yazio-mcp/issues"
+    "url": "https://github.com/weeebdev/yazio-mcp/issues"
   },
-  "homepage": "https://github.com/fliptheweb/yazio-mcp#readme",
+  "homepage": "https://github.com/weeebdev/yazio-mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",

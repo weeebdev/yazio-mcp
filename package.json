@@ -1,6 +1,6 @@
 {
   "name": "@weeebdev/yazio-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for accessing Yazio user & nutrition data (unofficial)",
   "mcpName": "io.github.weeebdev/yazio-mcp",
   "author": "weeebdev",

@@ -31,9 +31,23 @@ import {
   ClaimClaimableInputSchema,
   AutoclaimClaimablesInputSchema,
   LogWeightInputSchema,
+  GetFeelingInputSchema,
+  GetFastingInputSchema,
+  GetSubscriptionInputSchema,
+  GetMealsInputSchema,
+  GetUserRecipesInputSchema,
+  GetConsumedItemsLatestInputSchema,
+  GetFavoritesInputSchema,
+  GetMealImagesInputSchema,
+  SetGoalsInputSchema,
+  UpdateUserInputSchema,
   type ClaimClaimableInput,
   type AutoclaimClaimablesInput,
   type LogWeightInput,
+  type GetFavoritesInput,
+  type GetMealImagesInput,
+  type SetGoalsInput,
+  type UpdateUserInput,
   type GetFoodEntriesInput,
   type GetDailySummaryInput,
   type GetWaterIntakeInput,
@@ -430,6 +444,37 @@ class YazioMcpServer {
       },
       async (args: LogWeightInput) => this.logWeight(args)
     );
+
+    this.server.registerTool('get_user_feeling',
+      { description: 'Get mood/feeling note and tags for the user.', inputSchema: GetFeelingInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async () => this.getUserFeeling());
+    this.server.registerTool('get_user_fasting_countdowns',
+      { description: 'Get the user\'s intermittent-fasting countdowns.', inputSchema: GetFastingInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async () => this.getUserFasting());
+    this.server.registerTool('get_user_subscription',
+      { description: 'Get the user\'s subscription (PRO) status.', inputSchema: GetSubscriptionInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async () => this.getUserSubscription());
+    this.server.registerTool('get_user_meals',
+      { description: 'Get the user\'s saved meals (custom meal combinations).', inputSchema: GetMealsInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async () => this.getUserMeals());
+    this.server.registerTool('get_user_recipes',
+      { description: 'Get the user\'s own/saved recipes.', inputSchema: GetUserRecipesInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async () => this.getUserRecipes());
+    this.server.registerTool('get_user_consumed_items_latest',
+      { description: 'Get the most recently consumed items (quick re-add list).', inputSchema: GetConsumedItemsLatestInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async () => this.getConsumedItemsLatest());
+    this.server.registerTool('get_user_favorites',
+      { description: 'List favorite products or recipes.', inputSchema: GetFavoritesInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async (args: GetFavoritesInput) => this.getUserFavorites(args));
+    this.server.registerTool('get_user_meal_images',
+      { description: 'Get meal photos for a given date.', inputSchema: GetMealImagesInputSchema, annotations: { readOnlyHint: true, idempotentHint: true } },
+      async (args: GetMealImagesInput) => this.getUserMealImages(args));
+    this.server.registerTool('set_user_goals',
+      { description: 'Update nutrition/body goals (goals keyed by type, e.g. {"energy.energy":2000}; optional effective date).', inputSchema: SetGoalsInputSchema, annotations: { readOnlyHint: false, idempotentHint: true } },
+      async (args: SetGoalsInput) => this.setUserGoals(args));
+    this.server.registerTool('update_user',
+      { description: 'Update user profile fields (partial, e.g. {"language":"en"}).', inputSchema: UpdateUserInputSchema, annotations: { readOnlyHint: false, idempotentHint: true } },
+      async (args: UpdateUserInput) => this.updateUser(args));
   }
 
   private setupPromptHandlers(): void {
@@ -780,25 +825,26 @@ Example:
   }
 
   private async addUserConsumedItem(args: AddConsumedItemInput) {
-    const client = await this.ensureAuthenticated();
-
-    try {
-      await client.user.addConsumedItem({
-        ...args,
-        id: uuidv4(),
-      });
-
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: `Successfully added consumed item`,
-          },
-        ],
-      };
-    } catch (error) {
-      throw new Error(`Failed to add consumed item: ${error}`);
-    }
+    // IMPORTANT: send the exact payload shape the official app sends, incl. a FULL
+    // datetime "YYYY-MM-DD HH:mm:ss". The old code sent date-only ("YYYY-MM-DD"),
+    // which Android tolerated but the iOS client could not render (item invisible on
+    // iPhone). Appending the time fixes cross-platform display.
+    const nowTime = new Date().toTimeString().slice(0, 8); // HH:mm:ss (local)
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? `${args.date} ${nowTime}` : args.date;
+    const product: Record<string, unknown> = {
+      id: uuidv4(),
+      date,
+      daytime: args.daytime,
+      product_id: args.product_id,
+      amount: args.amount,
+    };
+    if (args.serving !== undefined) product.serving = args.serving;
+    if (args.serving_quantity !== undefined) product.serving_quantity = args.serving_quantity;
+    await this.yazioV22('/user/consumed-items', {
+      method: 'POST',
+      body: { products: [product], simple_products: [], recipe_portions: [] },
+    });
+    return this.asText('Successfully added consumed item', product);
   }
 
   private async removeUserConsumedItem(args: RemoveConsumedItemInput) {
@@ -949,6 +995,31 @@ Example:
     const body = { value: args.value, date: args.date ?? new Date().toISOString().slice(0, 19).replace('T', ' '), type: 'weight' };
     const data = await this.yazioV22('/user/bodyvalues', { method: 'POST', body });
     return this.asText('Logged weight', data ?? { ok: true });
+  }
+
+  // --- Remaining v22 reads ---
+  private async getUserFeeling() { return this.asText('Feeling (mood note + tags)', await this.yazioV22('/user/feeling')); }
+  private async getUserFasting() { return this.asText('Fasting countdowns', await this.yazioV22('/user/fasting-countdowns')); }
+  private async getUserSubscription() { return this.asText('Subscription', await this.yazioV22('/user/subscription')); }
+  private async getUserMeals() { return this.asText('User meals', await this.yazioV22('/user/meals')); }
+  private async getUserRecipes() { return this.asText('User recipes', await this.yazioV22('/user/recipes')); }
+  private async getConsumedItemsLatest() { return this.asText('Latest consumed items', await this.yazioV22('/user/consumed-items/latest')); }
+  private async getUserFavorites(args: GetFavoritesInput) {
+    return this.asText(`Favorite ${args.type}s`, await this.yazioV22(`/user/favorites/${args.type}`));
+  }
+  private async getUserMealImages(args: GetMealImagesInput) {
+    return this.asText(`Meal images ${args.date}`, await this.yazioV22(`/user/meal-images/${args.date}`));
+  }
+
+  // --- Writes ---
+  private async setUserGoals(args: SetGoalsInput) {
+    const body = { goals: args.goals, date: args.date ?? new Date().toISOString().slice(0, 10) };
+    const data = await this.yazioV22('/user/goals', { method: 'PATCH', body });
+    return this.asText('Updated goals', data ?? body);
+  }
+  private async updateUser(args: UpdateUserInput) {
+    const data = await this.yazioV22('/user', { method: 'PATCH', body: args.patch });
+    return this.asText('Updated user', data ?? args.patch);
   }
 
   async run(): Promise<void> {

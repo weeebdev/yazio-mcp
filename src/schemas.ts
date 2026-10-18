@@ -114,3 +114,28 @@ export const LogWeightInputSchema = z.object({
 export type ClaimClaimableInput = z.infer<typeof ClaimClaimableInputSchema>;
 export type AutoclaimClaimablesInput = z.infer<typeof AutoclaimClaimablesInputSchema>;
 export type LogWeightInput = z.infer<typeof LogWeightInputSchema>;
+
+// ---- Remaining v22 read/write tools ----
+export const GetFeelingInputSchema = EmptyInputSchema;
+export const GetFastingInputSchema = EmptyInputSchema;
+export const GetSubscriptionInputSchema = EmptyInputSchema;
+export const GetMealsInputSchema = EmptyInputSchema;
+export const GetUserRecipesInputSchema = EmptyInputSchema;
+export const GetConsumedItemsLatestInputSchema = EmptyInputSchema;
+export const GetFavoritesInputSchema = z.object({
+  type: z.enum(['product', 'recipe']).default('product').describe('Favorite kind to list'),
+});
+export const GetMealImagesInputSchema = z.object({
+  date: DateStringSchema.describe('Date (YYYY-MM-DD) of meal images'),
+});
+export const SetGoalsInputSchema = z.object({
+  goals: z.record(z.string(), z.number()).describe('Goals keyed by type, e.g. {"energy.energy":2000,"bodyvalue.weight":77}'),
+  date: DateStringSchema.optional().describe('Effective date (YYYY-MM-DD); defaults to today'),
+});
+export const UpdateUserInputSchema = z.object({
+  patch: z.record(z.string(), z.any()).describe('Partial user fields to update, e.g. {"language":"en","first_name":"..."}'),
+});
+export type GetFavoritesInput = z.infer<typeof GetFavoritesInputSchema>;
+export type GetMealImagesInput = z.infer<typeof GetMealImagesInputSchema>;
+export type SetGoalsInput = z.infer<typeof SetGoalsInputSchema>;
+export type UpdateUserInput = z.infer<typeof UpdateUserInputSchema>;

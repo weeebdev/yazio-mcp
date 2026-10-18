@@ -1,4 +1,4 @@
-name: Publish to NPM and MCP Registry
+name: Publish to GitHub Packages and MCP Registry
 
 on:
   push:
@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
       id-token: write
 
     steps:
@@ -21,7 +22,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24.x"
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@weeebdev'
 
       - name: Install dependencies
         run: npm ci
@@ -32,8 +34,10 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish to NPM
-        run: npm publish --access public --provenance
+      - name: Publish to GitHub Packages
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build MCPB bundle
         run: |

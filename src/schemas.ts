@@ -94,3 +94,23 @@ export type RemoveConsumedItemInput = z.infer<typeof RemoveConsumedItemInputSche
 export type AddWaterIntakeInput = z.infer<typeof AddWaterIntakeInputSchema>;
 export type GetDietaryPreferencesInput = z.infer<typeof GetDietaryPreferencesInputSchema>;
 export type GetUserGoalsInput = z.infer<typeof GetUserGoalsInputSchema>;
+
+// ---- Gamification: streaks + coins (DIAMOND currency) — v22 ----
+export const GetStreakInputSchema = EmptyInputSchema;
+export const GetWalletInputSchema = EmptyInputSchema;
+export const GetClaimablesInputSchema = EmptyInputSchema;
+export const GetShopItemsInputSchema = EmptyInputSchema;
+export const ClaimClaimableInputSchema = z.object({
+  uuid: z.uuid().describe('Claimable UUID to claim (from get_user_claimables; claiming credits its reward, e.g. DIAMOND coins, to the wallet)'),
+});
+export const AutoclaimClaimablesInputSchema = z.object({
+  user_date: DateStringSchema.optional().describe('User date (YYYY-MM-DD); defaults to today'),
+  type: DaytimeSchema.optional().describe('Meal time that triggered the chest (breakfast/lunch/dinner/snack)'),
+});
+export const LogWeightInputSchema = z.object({
+  value: z.number().describe('Body weight in kilograms'),
+  date: z.string().optional().describe('Datetime YYYY-MM-DD HH:mm:ss; defaults to now'),
+});
+export type ClaimClaimableInput = z.infer<typeof ClaimClaimableInputSchema>;
+export type AutoclaimClaimablesInput = z.infer<typeof AutoclaimClaimablesInputSchema>;
+export type LogWeightInput = z.infer<typeof LogWeightInputSchema>;

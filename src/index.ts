@@ -24,6 +24,16 @@ import {
   AddWaterIntakeInputSchema,
   GetDietaryPreferencesInputSchema,
   GetUserGoalsInputSchema,
+  GetStreakInputSchema,
+  GetWalletInputSchema,
+  GetClaimablesInputSchema,
+  GetShopItemsInputSchema,
+  ClaimClaimableInputSchema,
+  AutoclaimClaimablesInputSchema,
+  LogWeightInputSchema,
+  type ClaimClaimableInput,
+  type AutoclaimClaimablesInput,
+  type LogWeightInput,
   type GetFoodEntriesInput,
   type GetDailySummaryInput,
   type GetWaterIntakeInput,
@@ -349,6 +359,76 @@ class YazioMcpServer {
       async (args: AddWaterIntakeInput) => {
         return await this.addUserWaterIntake(args);
       }
+    );
+
+    this.server.registerTool(
+      'get_user_streak',
+      {
+        description: 'Get the daily tracking streak (per-day: daytimes tracked, streak_count, freeze_count).',
+        inputSchema: GetStreakInputSchema,
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async () => this.getUserStreak()
+    );
+
+    this.server.registerTool(
+      'get_user_wallet',
+      {
+        description: 'Get coin wallet balances (currencies, e.g. DIAMOND quantity). Coins are earned from reward chests and spent in the shop.',
+        inputSchema: GetWalletInputSchema,
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async () => this.getUserWallet()
+    );
+
+    this.server.registerTool(
+      'get_user_claimables',
+      {
+        description: 'List claimable reward chests (earned by tracking meals). Each has a uuid and rewards (e.g. 10 DIAMOND coins). Claim one with claim_claimable to credit the coins.',
+        inputSchema: GetClaimablesInputSchema,
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async () => this.getUserClaimables()
+    );
+
+    this.server.registerTool(
+      'claim_claimable',
+      {
+        description: 'Claim a reward chest by uuid (from get_user_claimables). This credits its reward (e.g. DIAMOND coins) to the wallet — this is how coins are added.',
+        inputSchema: ClaimClaimableInputSchema,
+        annotations: { readOnlyHint: false, idempotentHint: false },
+      },
+      async (args: ClaimClaimableInput) => this.claimClaimable(args)
+    );
+
+    this.server.registerTool(
+      'autoclaim_claimables',
+      {
+        description: 'Auto-claim all pending reward chests for a day (optionally filtered by meal time). Credits all available coins at once.',
+        inputSchema: AutoclaimClaimablesInputSchema,
+        annotations: { readOnlyHint: false, idempotentHint: false },
+      },
+      async (args: AutoclaimClaimablesInput) => this.autoclaimClaimables(args)
+    );
+
+    this.server.registerTool(
+      'get_shop_items',
+      {
+        description: 'List shop items purchasable with DIAMOND coins (e.g. STREAK_FREEZE, STREAK_SHIELD, PRO days) and their coin prices.',
+        inputSchema: GetShopItemsInputSchema,
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async () => this.getShopItems()
+    );
+
+    this.server.registerTool(
+      'log_user_weight',
+      {
+        description: 'Log a body weight measurement (value in kilograms; optional datetime, defaults to now).',
+        inputSchema: LogWeightInputSchema,
+        annotations: { readOnlyHint: false, idempotentHint: false },
+      },
+      async (args: LogWeightInput) => this.logWeight(args)
     );
   }
 
@@ -801,6 +881,75 @@ Example:
     }
   }
 
+
+  // Raw call to the current v22 API (the `yazio` client lib still targets v15; the
+  // gamification endpoints below only exist on v22). Reuses the client's bearer token.
+  private async yazioV22(path: string, init?: { method?: string; body?: unknown }): Promise<unknown> {
+    const client = await this.ensureAuthenticated();
+    // @ts-expect-error - internal auth token from the yazio client
+    const token = client.auth.token.access_token;
+    const res = await fetch(`https://yzapi.yazio.com/v22${path}`, {
+      method: init?.method ?? 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+    if (!res.ok) {
+      throw new Error(`${path} failed: ${res.status} ${res.statusText} - ${await res.text()}`);
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  private asText(label: string, data: unknown) {
+    return { content: [{ type: 'text' as const, text: `${label}:\n\n${JSON.stringify(data, null, 2)}` }] };
+  }
+
+  // --- Streaks ---
+  private async getUserStreak() {
+    // { "YYYY-MM-DD": { daytimes:[...], streak_count, freeze_count, origin_of_recovery } }
+    return this.asText('Tracking streak (per day)', await this.yazioV22('/user/streak'));
+  }
+
+  // --- Coins (DIAMOND currency) wallet + reward chests ("как добавляются монетки") ---
+  private async getUserWallet() {
+    // { currencies: [{ currency: "DIAMOND", quantity: N }] }
+    return this.asText('Wallet (coin balances)', await this.yazioV22('/user/wallet'));
+  }
+
+  private async getUserClaimables() {
+    // { claimables: [{ uuid, type, claimed, expires, rewards:[{type:"CURRENCY", contents:{currency:"DIAMOND", quantity}}] }] }
+    return this.asText('Claimable reward chests', await this.yazioV22('/user/claimables'));
+  }
+
+  private async claimClaimable(args: ClaimClaimableInput) {
+    // Claiming credits the chest's reward (e.g. DIAMOND coins) to the wallet.
+    const data = await this.yazioV22(`/user/claimables/${args.uuid}/claim`, { method: 'POST' });
+    return this.asText(`Claimed ${args.uuid}`, data ?? { ok: true });
+  }
+
+  private async autoclaimClaimables(args: AutoclaimClaimablesInput) {
+    const body = {
+      user_date: args.user_date ?? new Date().toISOString().slice(0, 10),
+      ...(args.type ? { type: args.type } : {}),
+    };
+    const data = await this.yazioV22('/user/claimables/autoclaim', { method: 'POST', body });
+    return this.asText('Auto-claimed chests', data ?? { ok: true });
+  }
+
+  private async getShopItems() {
+    // { items: [{ shop_item_type:"STREAK_FREEZE_V1", currency_type:"DIAMOND", currency_quantity }] }
+    return this.asText('Shop items (spend DIAMOND coins)', await this.yazioV22('/user/shop/items'));
+  }
+
+  // --- Log body weight (v22 bodyvalues) ---
+  private async logWeight(args: LogWeightInput) {
+    const body = { value: args.value, date: args.date ?? new Date().toISOString().slice(0, 19).replace('T', ' '), type: 'weight' };
+    const data = await this.yazioV22('/user/bodyvalues', { method: 'POST', body });
+    return this.asText('Logged weight', data ?? { ok: true });
+  }
 
   async run(): Promise<void> {
     const transport = new StdioServerTransport();

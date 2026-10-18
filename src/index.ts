@@ -65,6 +65,21 @@ import type {
   YazioAddWaterIntakeOptions
 } from './types.js';
 
+
+// Client-version headers the Yazio Android app sends; v22 returns "403
+// version_blocked" to requests that omit them. Values captured from the app build.
+const YAZIO_CLIENT_HEADERS: Record<string, string> = {
+  'User-Agent': 'YAZIO/26.41.2 (com.yazio.android; build:610090905; Android 36) Ktor',
+  'x-yazio-platform': 'android',
+  'x-yazio-app-version': '26.41.2',
+  'x-yazio-build-number': '610090905',
+  'x-yazio-os-version': '36',
+  'x-yazio-timezone': 'Asia/Almaty',
+  'x-yazio-language': 'en-US',
+  'x-yazio-country': 'KZ,US',
+  'x-yazio-session-id': uuidv4(),
+};
+
 class YazioMcpServer {
   private server: McpServer;
   private yazioClient: Yazio | null = null;
@@ -939,6 +954,8 @@ Example:
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
+        // v22 rejects requests without client-version headers ("403 version_blocked").
+        ...YAZIO_CLIENT_HEADERS,
       },
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
     });

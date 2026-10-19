@@ -896,7 +896,7 @@ Example:
   }
 
   private async registerTodayStreak() {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Almaty' });
+    const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10); // Asia/Almaty = UTC+5 (locale-free, host ICU may lack en-CA)
     return this.asText('Register today streak', await this.registerStreakForDate(today));
   }
 

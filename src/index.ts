@@ -493,6 +493,9 @@ class YazioMcpServer {
     this.server.registerTool('register_today_streak',
       { description: 'Register the tracking streak for today if there are tracked meals but today is missing from the streak (continues the count from the previous day; never overwrites). Mirrors the app flow a bare consumed-items POST skips.', inputSchema: GetStreakInputSchema, annotations: { readOnlyHint: false, idempotentHint: true } },
       async () => this.registerTodayStreak());
+    this.server.registerTool('claim_tracking_chests',
+      { description: 'Create today\'s tracking reward chest for the current time window (morning before noon / evening) and claim all pending chests, crediting DIAMOND coins. One chest per window per day (duplicates are no-ops).', inputSchema: GetStreakInputSchema, annotations: { readOnlyHint: false, idempotentHint: false } },
+      async () => this.claimTodayChests());
   }
 
   private setupPromptHandlers(): void {
@@ -868,7 +871,10 @@ Example:
     let streak: unknown;
     try { streak = await this.registerStreakForDate(date.slice(0, 10)); }
     catch (e) { streak = `streak update skipped: ${e}`; }
-    return this.asText('Successfully added consumed item', { product, streak });
+    let coins: unknown;
+    try { coins = await this.claimTrackingChests(Number(date.slice(11, 13)) || 12); }
+    catch (e) { coins = `coins skipped: ${e}`; }
+    return this.asText('Successfully added consumed item', { product, streak, coins });
   }
 
   // Register the tracking streak for a day that has consumed items but is missing
@@ -898,6 +904,33 @@ Example:
   private async registerTodayStreak() {
     const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10); // Asia/Almaty = UTC+5 (locale-free, host ICU may lack en-CA)
     return this.asText('Register today streak', await this.registerStreakForDate(today));
+  }
+
+  // Create today's tracking reward chest for the time window and claim all pending
+  // chests, crediting DIAMOND coins. The app creates a MORNING (before noon) or
+  // EVENING chest on tracking; the server allows one per window/day (duplicate
+  // create -> 409, ignored). Best-effort / non-fatal.
+  private async claimTrackingChests(hour: number): Promise<Record<string, unknown>> {
+    const window = hour < 12 ? 'MORNING' : 'EVENING';
+    try {
+      await this.yazioV22('/user/claimables', { method: 'POST', body: { uuid: uuidv4(), collectable_type: `TRACKING_${window}_CHEST_V1` } });
+    } catch { /* 409: this window's chest already exists today */ }
+    const data = (await this.yazioV22('/user/claimables')) as
+      { claimables?: { uuid: string; type?: string; claimed?: unknown; rewards?: { contents?: { quantity?: number } }[] }[] } | null;
+    const pending = (data?.claimables ?? []).filter((c) => !c.claimed);
+    let coins = 0;
+    for (const c of pending) {
+      try {
+        await this.yazioV22(`/user/claimables/${c.uuid}/claim`, { method: 'POST' });
+        coins += c.rewards?.[0]?.contents?.quantity ?? 0;
+      } catch { /* ignore a single failed claim */ }
+    }
+    return { window, claimed: pending.length, coins };
+  }
+
+  private async claimTodayChests() {
+    const hour = Number(new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(11, 13)); // Almaty
+    return this.asText('Claim tracking chests', await this.claimTrackingChests(hour));
   }
 
   private async removeUserConsumedItem(args: RemoveConsumedItemInput) {

@@ -490,6 +490,9 @@ class YazioMcpServer {
     this.server.registerTool('update_user',
       { description: 'Update user profile fields (partial, e.g. {"language":"en"}).', inputSchema: UpdateUserInputSchema, annotations: { readOnlyHint: false, idempotentHint: true } },
       async (args: UpdateUserInput) => this.updateUser(args));
+    this.server.registerTool('register_today_streak',
+      { description: 'Register the tracking streak for today if there are tracked meals but today is missing from the streak (continues the count from the previous day; never overwrites). Mirrors the app flow a bare consumed-items POST skips.', inputSchema: GetStreakInputSchema, annotations: { readOnlyHint: false, idempotentHint: true } },
+      async () => this.registerTodayStreak());
   }
 
   private setupPromptHandlers(): void {
@@ -859,7 +862,42 @@ Example:
       method: 'POST',
       body: { products: [product], simple_products: [], recipe_portions: [] },
     });
-    return this.asText('Successfully added consumed item', product);
+    // Also advance the tracking streak for that day. The official app does this via
+    // POST /user/streak/{date} after logging food; a bare consumed-items POST does
+    // not, so the streak would never progress. Non-fatal if it fails.
+    let streak: unknown;
+    try { streak = await this.registerStreakForDate(date.slice(0, 10)); }
+    catch (e) { streak = `streak update skipped: ${e}`; }
+    return this.asText('Successfully added consumed item', { product, streak });
+  }
+
+  // Register the tracking streak for a day that has consumed items but is missing
+  // from /user/streak. Continues the count from the previous day; never overwrites
+  // an existing day. Mirrors the official app's POST /user/streak/{date}.
+  private async registerStreakForDate(date: string): Promise<Record<string, unknown>> {
+    const day = date.slice(0, 10);
+    const items = (await this.yazioV22(`/user/consumed-items?date=${day}`)) as
+      { products?: { daytime?: string }[]; simple_products?: { daytime?: string }[] } | null;
+    const daytimes = Array.from(new Set([
+      ...((items?.products ?? []).map((p) => p.daytime)),
+      ...((items?.simple_products ?? []).map((p) => p.daytime)),
+    ].filter((d): d is string => Boolean(d))));
+    if (daytimes.length === 0) return { date: day, action: 'skipped: no consumed items' };
+    const streak = (await this.yazioV22('/user/streak')) as
+      Record<string, { streak_count: number; freeze_count: number }> | null;
+    if (streak && streak[day]) return { date: day, action: 'already registered', streak_count: streak[day].streak_count };
+    const prevKey = new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+    const keys = streak ? Object.keys(streak).sort() : [];
+    const ref = (streak && streak[prevKey]) || (keys.length ? streak![keys[keys.length - 1]] : undefined);
+    const streak_count = (ref?.streak_count ?? 0) + 1;
+    const freeze_count = ref?.freeze_count ?? 0;
+    await this.yazioV22(`/user/streak/${day}`, { method: 'POST', body: { daytimes, streak_count, freeze_count } });
+    return { date: day, action: 'registered', daytimes, streak_count, freeze_count };
+  }
+
+  private async registerTodayStreak() {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Almaty' });
+    return this.asText('Register today streak', await this.registerStreakForDate(today));
   }
 
   private async removeUserConsumedItem(args: RemoveConsumedItemInput) {

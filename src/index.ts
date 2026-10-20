@@ -8,6 +8,9 @@ import { v4 as uuidv4 } from "uuid";
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
+
+// Cache resolved product names/energy so consumed-items listings can show names.
+const productInfoCache = new Map<string, { name: string; energyPerGram: number }>();
 import {
   GetFoodEntriesInputSchema,
   GetDailySummaryInputSchema,
@@ -649,6 +652,7 @@ Example:
 
     try {
       const foodEntries = await client.user.getConsumedItems({ date: new Date(args.date) });
+      await this.enrichProducts(foodEntries);
 
       return {
         content: [
@@ -1037,6 +1041,36 @@ Example:
     return text ? JSON.parse(text) : null;
   }
 
+  private async resolveProductInfo(id: string): Promise<{ name: string; energyPerGram: number }> {
+    const cached = productInfoCache.get(id);
+    if (cached) return cached;
+    try {
+      const p = (await this.yazioV22(`/products/${id}`)) as { name?: string; nutrients?: Record<string, number> };
+      const info = { name: p?.name ?? '?', energyPerGram: Number(p?.nutrients?.['energy.energy'] ?? 0) };
+      productInfoCache.set(id, info);
+      return info;
+    } catch {
+      return { name: '?', energyPerGram: 0 };
+    }
+  }
+
+  // Attach a product `name` (and `kcal` for the eaten amount) to each consumed product,
+  // so callers can read what the food is instead of a bare product_id.
+  private async enrichProducts(data: unknown): Promise<unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const products: any[] = Array.isArray(data) ? data : ((data as any)?.products ?? []);
+    const ids = [...new Set(products.map((p) => p?.product_id).filter(Boolean))] as string[];
+    const infos = new Map<string, { name: string; energyPerGram: number }>();
+    await Promise.all(ids.map(async (id) => infos.set(id, await this.resolveProductInfo(id))));
+    for (const p of products) {
+      const info = infos.get(p?.product_id);
+      if (!info) continue;
+      p.name = info.name;
+      if (info.energyPerGram > 0 && typeof p.amount === 'number') p.kcal = Math.round(info.energyPerGram * p.amount);
+    }
+    return data;
+  }
+
   private asText(label: string, data: unknown) {
     return { content: [{ type: 'text' as const, text: `${label}:\n\n${JSON.stringify(data, null, 2)}` }] };
   }
@@ -1091,7 +1125,11 @@ Example:
   private async getUserSubscription() { return this.asText('Subscription', await this.yazioV22('/user/subscription')); }
   private async getUserMeals() { return this.asText('User meals', await this.yazioV22('/user/meals')); }
   private async getUserRecipes() { return this.asText('User recipes', await this.yazioV22('/user/recipes')); }
-  private async getConsumedItemsLatest() { return this.asText('Latest consumed items', await this.yazioV22('/user/consumed-items/latest')); }
+  private async getConsumedItemsLatest() {
+    const d = await this.yazioV22('/user/consumed-items/latest');
+    await this.enrichProducts(d);
+    return this.asText('Latest consumed items', d);
+  }
   private async getUserFavorites(args: GetFavoritesInput) {
     return this.asText(`Favorite ${args.type}s`, await this.yazioV22(`/user/favorites/${args.type}`));
   }
